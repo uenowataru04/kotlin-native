@@ -176,10 +176,19 @@ void Kotlin_destroyRuntime() {
         // Stop the cleaner worker without executing remaining cleaner blocks.
         ShutdownCleaners(false);
     }
-    if (Kotlin_memoryLeakCheckerEnabled()) WaitNativeWorkersTermination();
 
     atomicSet(&globalRuntimeStatus, GLOBAL_RUNTIME_DESTROYED);
 
+    // There's no need to clean up if we are not running any of the checkers.
+    bool needsFullShutdown = Kotlin_cleanersLeakCheckerEnabled() || Kotlin_memoryLeakCheckerEnabled();
+    if (!needsFullShutdown) {
+        return;
+    }
+
+    // Make sure Kotlin-created workers have terminated.
+    WaitNativeWorkersTermination();
+
+    // This must be the last alive runtime.
     auto otherRuntimesCount = atomicGet(&aliveRuntimesCount) - 1;
     RuntimeAssert(otherRuntimesCount >= 0, "Cannot be negative.");
     if (otherRuntimesCount > 0) {
