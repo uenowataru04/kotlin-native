@@ -883,6 +883,7 @@ internal class CAdapterGenerator(val context: Context) : DeclarationDescriptorVi
             val argument = if (!it.isUnit()) translateType(it) else "void"
             output("${translateType(nullableIt)} (*${it.createNullableNameForPredefinedType})($argument);", 1)
         }
+        output("void (*DestroyRuntime)();")
 
         output("")
         output("/* User functions. */", 1)
@@ -929,6 +930,7 @@ internal class CAdapterGenerator(val context: Context) : DeclarationDescriptorVi
         |void LeaveFrame(KObjHeader** start, int parameters, int count) RUNTIME_NOTHROW;
         |void Kotlin_initRuntimeIfNeeded();
         |void TerminateWithUnhandledException(KObjHeader*) RUNTIME_NORETURN;
+        |void Kotlin_destroyRuntime();
         |
         |KObjHeader* CreateStringFromCString(const char*, KObjHeader**);
         |char* CreateCStringFromString(const KObjHeader*);
@@ -986,6 +988,9 @@ internal class CAdapterGenerator(val context: Context) : DeclarationDescriptorVi
         |  KObjHolder holder;
         |  return IsInstance(DerefStablePointer(ref, holder.slot()), (const KTypeInfo*)type);
         |}
+        |static void DestroyRuntimeImpl() {
+        |  Kotlin_destroyRuntime();
+        |}
         """.trimMargin())
         predefinedTypes.forEach {
             assert(!it.isNothing())
@@ -1010,6 +1015,7 @@ internal class CAdapterGenerator(val context: Context) : DeclarationDescriptorVi
         predefinedTypes.forEach {
             output(".${it.createNullableNameForPredefinedType} = ${it.createNullableNameForPredefinedType}Impl,", 1)
         }
+        output(".DestroyRuntime = DestroyRuntimeImpl,", 1)
 
         makeScopeDefinitions(top, DefinitionKind.C_SOURCE_STRUCT, 1)
         output("};")
