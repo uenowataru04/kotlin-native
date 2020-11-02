@@ -179,24 +179,15 @@ void Kotlin_destroyRuntime() {
 
     atomicSet(&globalRuntimeStatus, GLOBAL_RUNTIME_DESTROYED);
 
-    // There's no need to clean up if we are not running any of the checkers.
-    bool needsFullShutdown = Kotlin_cleanersLeakCheckerEnabled() || Kotlin_memoryLeakCheckerEnabled();
-    if (!needsFullShutdown) {
-        return;
-    }
+    // TODO: We can avoid full shutdown, if we are not going to run any checkers.
 
     // Make sure Kotlin-created workers have terminated.
     WaitNativeWorkersTermination();
 
-    // This must be the last alive runtime.
     auto otherRuntimesCount = atomicGet(&aliveRuntimesCount) - 1;
-    RuntimeAssert(otherRuntimesCount >= 0, "Cannot be negative.");
-    if (otherRuntimesCount > 0) {
-        konan::consoleErrorf("Cannot destroy runtime while there're %d alive threads with Kotlin runtime on them.\n", otherRuntimesCount);
-        konan::abort();
-    }
 
-    deinitRuntime(::runtimeState, true);
+    // We can only destroy runtime if this is the last runtime.
+    deinitRuntime(::runtimeState, otherRuntimesCount == 0);
     ::runtimeState = kInvalidRuntime;
 }
 
