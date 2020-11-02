@@ -92,9 +92,9 @@ RuntimeState* initRuntime() {
   ::runtimeState = result;
   bool firstRuntime = compareAndSet(&globalRuntimeStatus, GLOBAL_RUNTIME_UNINITIALIZED, GLOBAL_RUNTIME_RUNNING);
   RuntimeCheck(atomicGet(&globalRuntimeStatus) == GLOBAL_RUNTIME_RUNNING, "Must be running");
-  atomicAdd(&aliveRuntimesCount, 1);
   result->memoryState = InitMemory(firstRuntime);
   result->worker = WorkerInit(true);
+  atomicAdd(&aliveRuntimesCount, 1);
   // Keep global variables in state as well.
   if (firstRuntime) {
     konan::consoleInit();
@@ -109,12 +109,13 @@ RuntimeState* initRuntime() {
   return result;
 }
 
-void deinitRuntime(RuntimeState* state, bool destroyRuntime) {
+void deinitRuntime(RuntimeState* state) {
   RuntimeAssert(state->status == RuntimeStatus::kRunning, "Runtime must be in the running state");
   state->status = RuntimeStatus::kDestroying;
   // This may be called after TLS is zeroed out, so ::memoryState in Memory cannot be trusted.
   RestoreMemory(state->memoryState);
-  atomicAdd(&aliveRuntimesCount, -1);
+  bool lastRuntime = atomicAdd(&aliveRuntimesCount, -1) == 0;
+  bool destroyRuntime = lastRuntime && atomicGet(&globalRuntimeStatus) == GLOBAL_RUNTIME_DESTROYED;
   InitOrDeinitGlobalVariables(DEINIT_THREAD_LOCAL_GLOBALS, state->memoryState);
   if (destroyRuntime)
     InitOrDeinitGlobalVariables(DEINIT_GLOBALS, state->memoryState);
@@ -127,7 +128,7 @@ void deinitRuntime(RuntimeState* state, bool destroyRuntime) {
 
 void Kotlin_deinitRuntimeCallback(void* argument) {
   auto* state = reinterpret_cast<RuntimeState*>(argument);
-  deinitRuntime(state, false);
+  deinitRuntime(state);
 }
 
 }  // namespace
@@ -158,7 +159,7 @@ void Kotlin_initRuntimeIfNeeded() {
 
 void Kotlin_deinitRuntimeIfNeeded() {
   if (isValidRuntime()) {
-    deinitRuntime(::runtimeState, false);
+    deinitRuntime(::runtimeState);
     ::runtimeState = kInvalidRuntime;
   }
 }
@@ -179,28 +180,11 @@ void Kotlin_destroyRuntime() {
         // Stop the cleaner worker without executing remaining cleaner blocks.
         ShutdownCleaners(false);
     }
+    if (Kotlin_memoryLeakCheckerEnabled()) WaitNativeWorkersTermination();
 
     atomicSet(&globalRuntimeStatus, GLOBAL_RUNTIME_DESTROYED);
 
-    // TODO: We can avoid full shutdown, if we are not going to run any checkers.
-
-    // Make sure Kotlin-created workers have terminated.
-    WaitNativeWorkersTermination();
-
-    auto otherRuntimesCount = atomicGet(&aliveRuntimesCount) - 1;
-    RuntimeAssert(otherRuntimesCount >= 0, "Cannot be negative.");
-
-    if (Kotlin_cleanersLeakCheckerEnabled() || Kotlin_memoryLeakCheckerEnabled()) {
-        // Checkers can only work if this is the last runtime.
-        if (otherRuntimesCount > 0) {
-            konan::consoleErrorf("Cannot destroy runtime while there're %d alive threads with Kotlin runtime on them.\n", otherRuntimesCount);
-            konan::abort();
-        }
-    }
-
-    // We can only fully destroy runtime if this is the last runtime.
-    deinitRuntime(::runtimeState, otherRuntimesCount == 0);
-    ::runtimeState = kInvalidRuntime;
+    Kotlin_deinitRuntimeIfNeeded();
 }
 
 KInt Konan_Platform_canAccessUnaligned() {

@@ -3231,11 +3231,11 @@ void AdoptReferenceFromSharedVariable(ObjHeader* object) {
 
 // Public memory interface.
 MemoryState* InitMemory(bool firstRuntime) {
-  return initMemory(firstRuntime);
+    return initMemory(firstRuntime);
 }
 
 void DeinitMemory(MemoryState* memoryState, bool destroyRuntime) {
-  deinitMemory(memoryState, destroyRuntime);
+    deinitMemory(memoryState, destroyRuntime);
 }
 
 void RestoreMemory(MemoryState* memoryState) {
