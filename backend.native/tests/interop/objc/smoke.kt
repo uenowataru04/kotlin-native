@@ -12,9 +12,7 @@ import kotlin.test.*
 fun main(args: Array<String>) {
     autoreleasepool {
         run()
-        kotlin.native.internal.GC.collect()
     }
-    kotlin.native.internal.GC.collect()
 }
 
 fun run() {
