@@ -322,6 +322,8 @@ private class BackendChecker(val context: Context, val irFile: IrFile) : IrEleme
     }
 
     override fun visitField(declaration: IrField) {
+        if (declaration.isFakeOverride) return // Can't happen now, just trying to be future-proof here.
+
         val parent = declaration.parent
 
         if (parent is IrClass && parent.defaultType.isNativePointed(symbols) && parent.symbol != symbols.nativePointed) {
